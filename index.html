@@ -11,7 +11,7 @@
     />
     <!-- 1. hls.js -->
     <script src="https://cdn.jsdelivr.net/hls.js/latest/hls.min.js"></script>
-    <!-- 2. Teleport bundle for hls.js (must go AFTER hls.js) -->
+    <!-- 2. Teleport bundle (AFTER hls.js) -->
     <script src="https://cdn.teleport.media/stable/teleport.hlsjs.bundle.js"></script>
     <style>
       * {
@@ -79,9 +79,103 @@
         background: #000;
       }
 
+      /* ===== PROGRESS BAR ===== */
+      .bar-wrap {
+        padding: 16px 18px 14px;
+        border-top: 1px solid #2a2a3a;
+      }
+
+      .bar-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #6a6a8a;
+        margin-bottom: 6px;
+      }
+
+      .bar-labels b {
+        font-weight: 700;
+      }
+      .bar-labels .lbl-cdn b {
+        color: #f59e0b;
+      }
+      .bar-labels .lbl-p2p b {
+        color: #a78bfa;
+      }
+
+      .bar {
+        height: 8px;
+        border-radius: 4px;
+        background: #2a2a3a;
+        overflow: hidden;
+        display: flex;
+      }
+
+      .bar .cdn-fill {
+        height: 100%;
+        background: #f59e0b;
+        transition: width 0.5s ease;
+      }
+
+      .bar .p2p-fill {
+        height: 100%;
+        background: #a78bfa;
+        transition: width 0.5s ease;
+      }
+
+      /* ===== STATS GRID ===== */
+      .stats {
+        padding: 0 18px 18px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .stat-card {
+        background: #16161f;
+        border: 1px solid #2a2a3a;
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+
+      .stat-card .label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: #6a6a8a;
+        margin-bottom: 8px;
+      }
+
+      .stat-card .value {
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .stat-card .sub {
+        font-size: 11px;
+        color: #6a6a8a;
+        margin-top: 4px;
+      }
+
+      .stat-card.cdn .value {
+        color: #f59e0b;
+      }
+      .stat-card.p2p .value {
+        color: #a78bfa;
+      }
+      .stat-card.peers .value {
+        color: #34d399;
+      }
+      .stat-card.saved .value {
+        color: #38bdf8;
+      }
+
+      /* ===== FOOTER ===== */
       .info {
-        padding: 16px 18px;
-        font-size: 12px;
+        padding: 12px 18px;
+        font-size: 11px;
         color: #5a5a7a;
         border-top: 1px solid #2a2a3a;
         display: flex;
@@ -90,9 +184,6 @@
 
       .info .status {
         color: #28c840;
-      }
-      .info .p2p {
-        color: #a78bfa;
       }
     </style>
   </head>
@@ -107,9 +198,50 @@
 
       <video id="video" controls></video>
 
+      <!-- Ratio bar -->
+      <div class="bar-wrap">
+        <div class="bar-labels">
+          <span class="lbl-cdn">CDN <b id="cdn-pct">0%</b></span>
+          <span class="lbl-p2p">P2P <b id="p2p-pct">0%</b></span>
+        </div>
+        <div class="bar">
+          <div class="cdn-fill" id="cdn-bar" style="width: 0%"></div>
+          <div class="p2p-fill" id="p2p-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Stats cards -->
+      <div class="stats">
+        <div class="stat-card cdn">
+          <div class="label">CDN Traffic</div>
+          <div class="value" id="cdn-size">0 B</div>
+          <div class="sub">
+            <span id="cdn-segs">0</span> segments &middot;
+            <span id="cdn-speed">0</span> Mbps
+          </div>
+        </div>
+        <div class="stat-card p2p">
+          <div class="label">P2P Traffic</div>
+          <div class="value" id="p2p-size">0 B</div>
+          <div class="sub">
+            <span id="p2p-segs">0</span> segments &middot;
+            <span id="p2p-speed">0</span> Mbps
+          </div>
+        </div>
+        <div class="stat-card peers">
+          <div class="label">Peers</div>
+          <div class="value" id="peers-count">0</div>
+          <div class="sub">connected via WebRTC</div>
+        </div>
+        <div class="stat-card saved">
+          <div class="label">CDN Saved</div>
+          <div class="value" id="cdn-saved">0 B</div>
+          <div class="sub">offloaded to P2P network</div>
+        </div>
+      </div>
+
       <div class="info">
         <div id="status" class="status">● connecting…</div>
-        <div id="p2p-status" class="p2p">p2p: waiting</div>
         <div>teleport + hls.js</div>
       </div>
     </div>
@@ -122,10 +254,56 @@
 
       var videoEl = document.getElementById("video");
       var statusEl = document.getElementById("status");
-      var p2pEl = document.getElementById("p2p-status");
+      var tlprt = null;
+      var peerSet = new Set();
 
+      // --- Helpers ---
+      function formatBytes(bytes) {
+        if (bytes === 0) return "0 B";
+        var units = ["B", "KB", "MB", "GB", "TB"];
+        var i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
+      }
+
+      function updateStats() {
+        if (!tlprt) return;
+
+        var stats = tlprt.getStatTotals();
+        var cdnBytes = stats.cdn.size;
+        var p2pBytes = stats.pdn.size;
+        var total = cdnBytes + p2pBytes;
+
+        var cdnPct = total > 0 ? (cdnBytes / total) * 100 : 0;
+        var p2pPct = total > 0 ? (p2pBytes / total) * 100 : 0;
+
+        // Bar
+        document.getElementById("cdn-bar").style.width = cdnPct + "%";
+        document.getElementById("p2p-bar").style.width = p2pPct + "%";
+        document.getElementById("cdn-pct").textContent =
+          cdnPct.toFixed(1) + "%";
+        document.getElementById("p2p-pct").textContent =
+          p2pPct.toFixed(1) + "%";
+
+        // CDN card
+        document.getElementById("cdn-size").textContent = formatBytes(cdnBytes);
+        document.getElementById("cdn-segs").textContent = stats.cdn.count;
+        document.getElementById("cdn-speed").textContent =
+          stats.cdn.speed.toFixed(1);
+
+        // P2P card
+        document.getElementById("p2p-size").textContent = formatBytes(p2pBytes);
+        document.getElementById("p2p-segs").textContent = stats.pdn.count;
+        document.getElementById("p2p-speed").textContent =
+          stats.pdn.speed.toFixed(1);
+
+        // Peers & savings
+        document.getElementById("peers-count").textContent = peerSet.size;
+        document.getElementById("cdn-saved").textContent =
+          formatBytes(p2pBytes);
+      }
+
+      // --- Init ---
       if (Hls.isSupported()) {
-        // 1. Создаём hls.js плеер
         var hls = new Hls();
         hls.loadSource(STREAM_URL);
         hls.attachMedia(videoEl);
@@ -141,42 +319,44 @@
           if (data.fatal) hls.destroy();
         });
 
-        // 2. Инициализируем Teleport P2P
+        // Teleport P2P init
         teleport
           .initialize({
-            apiKey: "d64543f8bcf68323",
+            apiKey: API_KEY,
             loader: {
-              type: "hlsjs", // тип плагина
-              params: {
-                hlsjs: hls, // передаём экземпляр hls.js
-              },
+              type: "hlsjs",
+              params: { hlsjs: hls },
             },
           })
           .then(function (instance) {
-            p2pEl.textContent = "p2p: active ✓";
-            console.log("Teleport P2P initialized", instance);
+            tlprt = instance;
+            statusEl.textContent = "● live · p2p active";
 
-            // Освобождаем ресурсы при закрытии
+            // Track peers
+            tlprt.onPeerConnectionOpened = function (peerId) {
+              peerSet.add(peerId);
+            };
+            tlprt.onPeerConnectionClosed = function (peerId) {
+              peerSet.delete(peerId);
+            };
+
+            // Refresh stats every second
+            setInterval(updateStats, 1000);
+
             window.addEventListener("unload", function () {
               instance.dispose();
             });
           })
           .catch(function (err) {
-            p2pEl.textContent = "p2p: error";
-            p2pEl.style.color = "#ff5f57";
-            console.error("Teleport init error:", err);
+            statusEl.textContent = "● live · p2p error";
+            console.error("Teleport error:", err);
           });
       } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari — нативный HLS (Teleport не работает без hls.js)
         videoEl.src = STREAM_URL;
         videoEl.addEventListener("loadedmetadata", function () {
-          statusEl.textContent = "● live";
-          p2pEl.textContent = "p2p: n/a (native)";
+          statusEl.textContent = "● live (native HLS, no P2P)";
           videoEl.play().catch(function () {});
         });
-      } else {
-        statusEl.textContent = "● HLS not supported";
-        statusEl.style.color = "#ff5f57";
       }
     </script>
   </body>
