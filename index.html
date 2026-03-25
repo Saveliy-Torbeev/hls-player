@@ -1,122 +1,143 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HLS Player</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="teleport-site-verification" content="271b872163bf2dea" />
+    <title>HLS Player</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0a0a0f;
-      font-family: 'JetBrains Mono', monospace;
-      color: #e0e0e0;
-    }
+      body {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a0f;
+        font-family: "JetBrains Mono", monospace;
+        color: #e0e0e0;
+      }
 
-    .player-wrap {
-      width: 90%;
-      max-width: 860px;
-      background: #12121a;
-      border: 1px solid #2a2a3a;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 0 60px rgba(80, 60, 220, 0.15), 0 0 120px rgba(80, 60, 220, 0.05);
-    }
+      .player-wrap {
+        width: 90%;
+        max-width: 860px;
+        background: #12121a;
+        border: 1px solid #2a2a3a;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow:
+          0 0 60px rgba(80, 60, 220, 0.15),
+          0 0 120px rgba(80, 60, 220, 0.05);
+      }
 
-    .top-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 18px;
-      background: #16161f;
-      border-bottom: 1px solid #2a2a3a;
-    }
+      .top-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 18px;
+        background: #16161f;
+        border-bottom: 1px solid #2a2a3a;
+      }
 
-    .dot { width: 10px; height: 10px; border-radius: 50%; }
-    .dot.r { background: #ff5f57; }
-    .dot.y { background: #febc2e; }
-    .dot.g { background: #28c840; }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
 
-    .top-bar span {
-      margin-left: 12px;
-      font-size: 12px;
-      color: #6a6a8a;
-      letter-spacing: 1px;
-    }
+      .top-bar span {
+        margin-left: 12px;
+        font-size: 12px;
+        color: #6a6a8a;
+        letter-spacing: 1px;
+      }
 
-    video {
-      display: block;
-      width: 100%;
-      background: #000;
-    }
+      video {
+        display: block;
+        width: 100%;
+        background: #000;
+      }
 
-    .info {
-      padding: 16px 18px;
-      font-size: 12px;
-      color: #5a5a7a;
-      border-top: 1px solid #2a2a3a;
-      display: flex;
-      justify-content: space-between;
-    }
+      .info {
+        padding: 16px 18px;
+        font-size: 12px;
+        color: #5a5a7a;
+        border-top: 1px solid #2a2a3a;
+        display: flex;
+        justify-content: space-between;
+      }
 
-    .info .status { color: #28c840; }
-  </style>
-</head>
-<body>
+      .info .status {
+        color: #28c840;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="player-wrap">
+      <div class="top-bar">
+        <div class="dot r"></div>
+        <div class="dot y"></div>
+        <div class="dot g"></div>
+        <span>HLS STREAM</span>
+      </div>
 
-  <div class="player-wrap">
-    <div class="top-bar">
-      <div class="dot r"></div>
-      <div class="dot y"></div>
-      <div class="dot g"></div>
-      <span>HLS STREAM</span>
+      <video id="video" controls></video>
+
+      <div class="info">
+        <div id="status" class="status">● connecting…</div>
+        <div>hls.js player</div>
+      </div>
     </div>
 
-    <video id="video" controls></video>
+    <script>
+      const videoEl = document.getElementById("video");
+      const statusEl = document.getElementById("status");
 
-    <div class="info">
-      <div id="status" class="status">● connecting…</div>
-      <div>hls.js player</div>
-    </div>
-  </div>
+      // Public Apple demo HLS stream (Big Buck Bunny)
+      const streamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
 
-  <script>
-    const videoEl = document.getElementById('video');
-    const statusEl = document.getElementById('status');
-
-    // Public Apple demo HLS stream (Big Buck Bunny)
-    const streamUrl = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
-
-    if (Hls.isSupported()) {
-      const hls = new Hls();
-      hls.loadSource(streamUrl);
-      hls.attachMedia(videoEl);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        statusEl.textContent = '● live';
-        videoEl.play().catch(() => {});
-      });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        statusEl.textContent = '● error';
-        statusEl.style.color = '#ff5f57';
-        if (data.fatal) hls.destroy();
-      });
-    } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari — native HLS
-      videoEl.src = streamUrl;
-      videoEl.addEventListener('loadedmetadata', () => {
-        statusEl.textContent = '● live';
-        videoEl.play().catch(() => {});
-      });
-    } else {
-      statusEl.textContent = '● HLS not supported';
-      statusEl.style.color = '#ff5f57';
-    }
-  </script>
-</body>
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(streamUrl);
+        hls.attachMedia(videoEl);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          statusEl.textContent = "● live";
+          videoEl.play().catch(() => {});
+        });
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          statusEl.textContent = "● error";
+          statusEl.style.color = "#ff5f57";
+          if (data.fatal) hls.destroy();
+        });
+      } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari — native HLS
+        videoEl.src = streamUrl;
+        videoEl.addEventListener("loadedmetadata", () => {
+          statusEl.textContent = "● live";
+          videoEl.play().catch(() => {});
+        });
+      } else {
+        statusEl.textContent = "● HLS not supported";
+        statusEl.style.color = "#ff5f57";
+      }
+    </script>
+  </body>
 </html>
