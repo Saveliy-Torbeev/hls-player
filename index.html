@@ -9,7 +9,10 @@
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- 1. hls.js -->
+    <script src="https://cdn.jsdelivr.net/hls.js/latest/hls.min.js"></script>
+    <!-- 2. Teleport bundle for hls.js (must go AFTER hls.js) -->
+    <script src="https://cdn.teleport.media/stable/teleport.hlsjs.bundle.js"></script>
     <style>
       * {
         margin: 0;
@@ -88,6 +91,9 @@
       .info .status {
         color: #28c840;
       }
+      .info .p2p {
+        color: #a78bfa;
+      }
     </style>
   </head>
   <body>
@@ -96,43 +102,77 @@
         <div class="dot r"></div>
         <div class="dot y"></div>
         <div class="dot g"></div>
-        <span>HLS STREAM</span>
+        <span>HLS STREAM + TELEPORT P2P</span>
       </div>
 
       <video id="video" controls></video>
 
       <div class="info">
         <div id="status" class="status">● connecting…</div>
-        <div>hls.js player</div>
+        <div id="p2p-status" class="p2p">p2p: waiting</div>
+        <div>teleport + hls.js</div>
       </div>
     </div>
 
     <script>
-      const videoEl = document.getElementById("video");
-      const statusEl = document.getElementById("status");
+      // ====== НАСТРОЙКИ ======
+      var STREAM_URL = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+      var API_KEY = "YOUR_API_KEY"; // <-- Замени на свой ключ из teleport.media
+      // =======================
 
-      // Public Apple demo HLS stream (Big Buck Bunny)
-      const streamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+      var videoEl = document.getElementById("video");
+      var statusEl = document.getElementById("status");
+      var p2pEl = document.getElementById("p2p-status");
 
       if (Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
+        // 1. Создаём hls.js плеер
+        var hls = new Hls();
+        hls.loadSource(STREAM_URL);
         hls.attachMedia(videoEl);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+
+        hls.on(Hls.Events.MANIFEST_PARSED, function () {
           statusEl.textContent = "● live";
-          videoEl.play().catch(() => {});
+          videoEl.play().catch(function () {});
         });
-        hls.on(Hls.Events.ERROR, (_, data) => {
+
+        hls.on(Hls.Events.ERROR, function (_, data) {
           statusEl.textContent = "● error";
           statusEl.style.color = "#ff5f57";
           if (data.fatal) hls.destroy();
         });
+
+        // 2. Инициализируем Teleport P2P
+        teleport
+          .initialize({
+            apiKey: API_KEY,
+            loader: {
+              type: "hlsjs", // тип плагина
+              params: {
+                hlsjs: hls, // передаём экземпляр hls.js
+              },
+            },
+          })
+          .then(function (instance) {
+            p2pEl.textContent = "p2p: active ✓";
+            console.log("Teleport P2P initialized", instance);
+
+            // Освобождаем ресурсы при закрытии
+            window.addEventListener("unload", function () {
+              instance.dispose();
+            });
+          })
+          .catch(function (err) {
+            p2pEl.textContent = "p2p: error";
+            p2pEl.style.color = "#ff5f57";
+            console.error("Teleport init error:", err);
+          });
       } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari — native HLS
-        videoEl.src = streamUrl;
-        videoEl.addEventListener("loadedmetadata", () => {
+        // Safari — нативный HLS (Teleport не работает без hls.js)
+        videoEl.src = STREAM_URL;
+        videoEl.addEventListener("loadedmetadata", function () {
           statusEl.textContent = "● live";
-          videoEl.play().catch(() => {});
+          p2pEl.textContent = "p2p: n/a (native)";
+          videoEl.play().catch(function () {});
         });
       } else {
         statusEl.textContent = "● HLS not supported";
